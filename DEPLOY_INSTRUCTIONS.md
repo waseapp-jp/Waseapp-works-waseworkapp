@@ -1,58 +1,49 @@
-# GitHub 自動デプロイ設定ガイド (GitHub Actions → Firebase Hosting)
+# 自動デプロイ診断結果と解決手順
 
-このリポジトリ（`https://github.com/waseapp-jp/Waseapp-works-waseworkapp`）への `push`（`main` / `master` ブランチ）をトリガーとして、**Firebase Hosting** への自動ビルド・自動デプロイを行う GitHub Actions ワークフローが設定されています。
+## 🔍 今回のエラー原因（Firebase Hosting でデプロイできなかった理由）
 
----
+GitHub Actions のログを確認したところ、以下のエラーが発生していました：
 
-## 📁 作成されたワークフロー
-
-1. **本番自動デプロイ** (`.github/workflows/firebase-hosting-merge.yml`)
-   - `main` または `master` ブランチへの `push` / `merge` 時に起動
-   - `npm ci || npm install` → `npm run build` → Firebase Hosting (liveチャンネル) へ自動公開
-2. **PRプレビューデプロイ** (`.github/workflows/firebase-hosting-pull-request.yml`)
-   - Pull Request 作成・更新時に専用プレビューURLを自動発行
-
----
-
-## 🔑 必要なワンタイム設定 (GitHub Secrets の登録)
-
-GitHub Actions から Firebase Hosting へアクセス・デプロイするための認証情報を GitHub に1回だけ設定します。
-
-### 方法 1: Firebase CLI で全自動設定 (おすすめ・一番簡単)
-
-ローカルPC等のターミナルで以下を実行すると、GitHubアカウントとFirebaseが自動リンクされ、Secretも自動でGitHubに登録されます。
-
-```bash
-firebase login
-firebase init hosting:github
+```text
+403 PERMISSION_DENIED: Permission denied to get service [firebasehosting.googleapis.com]
+service: serviceusage.googleapis.com
+permission: serviceusage.services.get
+subject: projects/225350217665/services/firebasehosting.googleapis.com
 ```
 
-1. **For which GitHub repository would you like to set up a GitHub workflow?**
-   → `waseapp-jp/Waseapp-works-waseworkapp` を入力
-2. **Set up the workflow to run a build script before every deploy?**
-   → `Yes` (スクリプト名: `npm run build`)
-3. **Set up automatic deployment to your site's live channel when a PR is merged?**
-   → `Yes` (ブランチ名: `main`)
+### 原因の解説
+Google Cloud / Firebase プロジェクト（`waseapp-works-waseworkapp`）において、**Firebase Hosting API が有効化されていない（または Firebase Console で Hosting の初期セットアップ「使ってみる」が完了していない）**ため、GitHub Actions に登録されたサービスアカウントからのアクセスが拒否されました。
 
 ---
 
-### 方法 2: 手動でサービスアカウント JSON を登録する場合
+## 🚀 解決策 1: GitHub Pages で即座に自動デプロイ（推奨・設定不要）
 
-1. **GCP Console / Firebase Console でサービスアカウントキーを発行**:
-   - [Google Cloud IAM & 管理](https://console.cloud.google.com/iam-admin/serviceaccounts?project=waseapp-works-waseworkapp) を開く
-   - プロジェクト: `waseapp-works-waseworkapp`
-   - 「サービス アカウントを作成」または既存の `firebase-adminsdk` を選択
-   - 役割（ロール）: **Firebase Hosting 管理者** (または `Firebase Hosting Admin`) を付与
-   - 作成後、該当アカウントの「キー」タブ → 「鍵を追加」 → 「新しい鍵を作成」 → **JSON** を選択してダウンロード
-2. **GitHub リポジトリに Secret を登録**:
-   - リポジトリ (`waseapp-jp/Waseapp-works-waseworkapp`) を開く
-   - **Settings** → **Secrets and variables** → **Actions** を開く
-   - **New repository secret** をクリック
-   - Name: `FIREBASE_SERVICE_ACCOUNT_WASEAPP_WORKS_WASEWORKAPP` (または `FIREBASE_SERVICE_ACCOUNT`)
-   - Secret: ダウンロードした JSON ファイルの中身をそのまま貼り付けて保存
+すでにリポジトリ設定を完了し、`.github/workflows/deploy-pages.yml` を追加しました！
+**何もしなくても、GitHub に push するだけで以下の URL に全自動でデプロイされます：**
+
+🔗 **公開URL**: **https://waseapp-jp.github.io/Waseapp-works-waseworkapp/**
+
+- サービスアカウントキーや GCP 権限の設定は一切不要
+- `main` ブランチへ `git push` するたびに、自動ビルド＆自動公開されます
 
 ---
 
-## 🚀 デプロイの実行
+## ⚡ 解決策 2: Firebase Hosting も有効化したい場合の手順（2ステップ）
 
-上記の設定完了後、ローカルや作業環境からリポジトリへコードを `git push` すると、自動的に GitHub Actions が走り、Firebase Hosting へ即座に反映されます！
+Firebase Hosting (`https://waseapp-works-waseworkapp.web.app`) にもデプロイしたい場合は、以下の2点を行うだけで解決します：
+
+### ステップ 1: Firebase Console で Hosting を有効化
+1. [Firebase Hosting コンソール](https://console.firebase.google.com/project/waseapp-works-waseworkapp/hosting) を開く
+2. 「**始める**（Get started）」ボタンをクリックして初期設定を完了する（画面の指示通り次へ進むだけでOKです）
+3. これにより、Google Cloud 側で `firebasehosting.googleapis.com` が自動的に有効化されます。
+   ※ または直接 [GCP APIライブラリ (Firebase Hosting API)](https://console.cloud.google.com/apis/library/firebasehosting.googleapis.com?project=waseapp-works-waseworkapp) を開いて「有効にする」をクリック
+
+### ステップ 2: サービスアカウントの権限確認
+1. [Google Cloud IAM & 管理](https://console.cloud.google.com/iam-admin/iam?project=waseapp-works-waseworkapp) を開く
+2. GitHub Secrets に登録したサービスアカウント（`github-action-...` 等）の鉛筆マーク（編集）をクリック
+3. 以下の2つのロールが付与されていることを確認（なければ「別のロールを追加」）：
+   - **Firebase Hosting 管理者** (`Firebase Hosting Admin`)
+   - **Service Usage 閲覧者** または **Service Usage ユーザー** (`Service Usage Consumer`)
+4. 保存
+
+これで次回の push から Firebase Hosting への自動デプロイも成功します。
