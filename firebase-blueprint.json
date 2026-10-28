@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with role-based access control details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "maxLength": 120 },
+        "avatar": { "type": "string", "maxLength": 10 },
+        "role": { "type": "string", "enum": ["admin", "member", "viewer"] },
+        "roleTitle": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "enum": ["online", "busy", "in_meeting", "offline"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "role", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Enterprise kanban task with assignees and due dates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["todo", "in_progress", "done"] },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "dueDate": { "type": "string", "maxLength": 50 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "status", "priority", "channelId", "createdBy"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "End-to-end encrypted channel message with payload verification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "channelId": { "type": "string", "maxLength": 128 },
+        "encryptedContent": { "type": "string", "maxLength": 20000 },
+        "iv": { "type": "string", "maxLength": 100 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "senderName": { "type": "string", "maxLength": 100 },
+        "senderAvatar": { "type": "string", "maxLength": 10 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "hasAttachment": { "type": "boolean" },
+        "attachmentName": { "type": "string", "maxLength": 255 },
+        "attachmentSize": { "type": "number" },
+        "attachmentEncryptedBlob": { "type": "string", "maxLength": 500000 }
+      },
+      "required": ["id", "channelId", "encryptedContent", "iv", "senderId", "senderName", "timestamp"]
+    },
+    "SecureFile": {
+      "title": "SecureFile",
+      "description": "Zero-knowledge encrypted corporate asset record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 255 },
+        "size": { "type": "number" },
+        "type": { "type": "string", "maxLength": 100 },
+        "encryptedData": { "type": "string", "maxLength": 1000000 },
+        "iv": { "type": "string", "maxLength": 100 },
+        "uploadedBy": { "type": "string", "maxLength": 100 },
+        "uploadedById": { "type": "string", "maxLength": 128 },
+        "uploadedAt": { "type": "string", "format": "date-time" },
+        "channelId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "name", "size", "type", "encryptedData", "iv", "uploadedBy", "uploadedAt"]
+    },
+    "ScheduledMeeting": {
+      "title": "ScheduledMeeting",
+      "description": "Scheduled encrypted P2P meeting session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "channelName": { "type": "string", "maxLength": 100 },
+        "scheduledAt": { "type": "string", "maxLength": 50 },
+        "durationMinutes": { "type": "number" },
+        "hostId": { "type": "string", "maxLength": 128 },
+        "hostName": { "type": "string", "maxLength": 100 },
+        "hostAvatar": { "type": "string", "maxLength": 10 },
+        "roomCode": { "type": "string", "maxLength": 50 },
+        "attendeesCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "channelName", "scheduledAt", "durationMinutes", "hostId", "hostName", "roomCode"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and access audit record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "action": { "type": "string", "maxLength": 100 },
+        "detail": { "type": "string", "maxLength": 1000 },
+        "category": { "type": "string", "enum": ["crypto", "webrtc", "task", "file", "rbac", "meeting", "system"] },
+        "status": { "type": "string", "enum": ["success", "warning", "danger", "info"] },
+        "actorId": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "timestamp", "action", "detail", "category", "status"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and RBAC assignment"
+    },
+    "/tenants/{tenantId}": {
+      "schema": "Tenant",
+      "description": "Tenant organization details"
+    },
+    "/tenants/{tenantId}/channels/{channelId}": {
+      "schema": "Channel",
+      "description": "Tenant communication channel"
+    },
+    "/tenants/{tenantId}/channels/{channelId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "AES-256 encrypted channel message"
+    },
+    "/tenants/{tenantId}/channels/{channelId}/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "AES-256 encrypted channel task"
+    },
+    "/tenants/{tenantId}/channels/{channelId}/files/{fileId}": {
+      "schema": "SecureFile",
+      "description": "AES-256 zero-knowledge encrypted file record"
+    },
+    "/tenants/{tenantId}/meetings/{meetingId}": {
+      "schema": "ScheduledMeeting",
+      "description": "Encrypted P2P meeting session under tenant"
+    },
+    "/tenants/{tenantId}/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Immutable tenant audit logs"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "WaseWorkApp",
+  "description": "Microsoft Teamsスタイルの高セキュリティ統合業務プラットフォーム。Firebase Firestore/Auth クラウド永続化、暗号化リアルタイムチャット、タスク管理、WebRTC P2Pミーティング、E2EEファイル共有を統合。",
+  "requestFramePermissions": ["camera", "microphone", "display-capture"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

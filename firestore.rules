@@ -1,0 +1,275 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helper Functions ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isBootstrappedAdmin() {
+      return isSignedIn() &&
+        (request.auth.token.email == 'aimutsu0120@gmail.com' ||
+         exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- Users Collection ---
+    function isValidUser(data) {
+      return data.keys().hasOnly(['id', 'name', 'email', 'avatar', 'photoURL', 'companyName', 'role', 'roleTitle', 'status', 'isSystemAdmin', 'updatedAt']) &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 128)) &&
+        (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+        (!('role' in data) || (data.role in ['admin', 'member', 'viewer'])) &&
+        (!('status' in data) || (data.status in ['online', 'busy', 'away', 'in_meeting', 'offline'])) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+        (!('avatar' in data) || (data.avatar is string && data.avatar.size() <= 10)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 3000000)) &&
+        (!('companyName' in data) || (data.companyName is string && data.companyName.size() <= 100)) &&
+        (!('roleTitle' in data) || (data.roleTitle is string && data.roleTitle.size() <= 100)) &&
+        (!('isSystemAdmin' in data) || data.isSystemAdmin is bool) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50));
+    }
+
+    match /users/{userId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(userId) && isValidUser(incoming());
+      allow update: if isSignedIn() && isValidId(userId) && isValidUser(incoming());
+      allow delete: if isBootstrappedAdmin();
+    }
+
+    // --- Users Secrets Collection (Custom ID / Password Hashes & Reset Questions) ---
+    match /users_secrets/{userId} {
+      allow get, list, create, update, delete: if true;
+    }
+
+    // --- Tasks Collection ---
+    function isValidTask(data) {
+      return data.keys().hasAll(['id', 'title', 'status', 'priority', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'title', 'description', 'status', 'priority', 'channelId', 'dueDate', 'createdBy', 'assignee', 'createdAt', 'updatedAt', 'encryptedNotes']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.status in ['todo', 'in_progress', 'review', 'done'] &&
+        data.priority in ['low', 'medium', 'high', 'urgent'] &&
+        (!('channelId' in data) || (data.channelId is string && data.channelId.size() <= 128)) &&
+        (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 128)) &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 20000)) &&
+        (!('dueDate' in data) || (data.dueDate is string && data.dueDate.size() <= 50)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50)) &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 50)) &&
+        (!('encryptedNotes' in data) || (data.encryptedNotes is string && data.encryptedNotes.size() <= 20000)) &&
+        (!('assignee' in data) || data.assignee is map || data.assignee is string);
+    }
+
+    match /{path=**}/tasks/{taskId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+      allow update: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // --- Messages Collection ---
+    function isValidMessage(data) {
+      return data.keys().hasAll(['id', 'channelId', 'encryptedContent', 'iv', 'senderId', 'senderName', 'timestamp']) &&
+        data.keys().hasOnly(['id', 'channelId', 'encryptedContent', 'decryptedContent', 'iv', 'senderId', 'senderName', 'senderAvatar', 'timestamp', 'isEncrypted', 'attachmentId', 'attachmentName', 'hasAttachment', 'attachmentSize', 'attachmentEncryptedBlob']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.channelId is string && data.channelId.size() <= 128 &&
+        data.encryptedContent is string && data.encryptedContent.size() <= 50000 &&
+        data.iv is string && data.iv.size() <= 100 &&
+        data.senderId is string && data.senderId.size() <= 128 &&
+        data.senderName is string && data.senderName.size() <= 100 &&
+        data.timestamp is string && data.timestamp.size() <= 50 &&
+        (!('isEncrypted' in data) || data.isEncrypted is bool) &&
+        (!('attachmentId' in data) || (data.attachmentId is string && data.attachmentId.size() <= 128)) &&
+        (!('attachmentName' in data) || (data.attachmentName is string && data.attachmentName.size() <= 255)) &&
+        (!('hasAttachment' in data) || data.hasAttachment is bool) &&
+        (!('attachmentSize' in data) || data.attachmentSize is number) &&
+        (!('attachmentEncryptedBlob' in data) || (data.attachmentEncryptedBlob is string && data.attachmentEncryptedBlob.size() <= 1000000));
+    }
+
+    match /{path=**}/messages/{messageId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(messageId) && isValidMessage(incoming());
+      allow update: if false; // Messages are immutable once posted
+      allow delete: if isBootstrappedAdmin() || (isSignedIn() && existing().senderId == request.auth.uid);
+    }
+
+    // --- Files Collection ---
+    function isValidSecureFile(data) {
+      return data.keys().hasAll(['id', 'name', 'size', 'encryptedData', 'iv', 'uploadedBy', 'uploadedAt']) &&
+        data.keys().hasOnly(['id', 'name', 'size', 'mimeType', 'type', 'checksum', 'encryptedData', 'iv', 'uploadedBy', 'uploadedById', 'uploadedAt', 'channelId']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 255 &&
+        data.size is number && data.size >= 0 && data.size <= 50000000 &&
+        data.encryptedData is string && data.encryptedData.size() <= 10000000 &&
+        data.iv is string && data.iv.size() <= 100 &&
+        data.uploadedBy is string && data.uploadedBy.size() <= 100 &&
+        data.uploadedAt is string && data.uploadedAt.size() <= 50 &&
+        (!('mimeType' in data) || (data.mimeType is string && data.mimeType.size() <= 100)) &&
+        (!('type' in data) || (data.type is string && data.type.size() <= 100)) &&
+        (!('checksum' in data) || (data.checksum is string && data.checksum.size() <= 128)) &&
+        (!('uploadedById' in data) || (data.uploadedById is string && data.uploadedById.size() <= 128)) &&
+        (!('channelId' in data) || (data.channelId is string && data.channelId.size() <= 128));
+    }
+
+    match /{path=**}/files/{fileId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(fileId) && isValidSecureFile(incoming());
+      allow update: if isSignedIn() && isValidId(fileId) && isValidSecureFile(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // --- Meetings Collection ---
+    function isValidMeeting(data) {
+      return data.keys().hasAll(['id', 'title', 'hostId', 'hostName', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'title', 'description', 'roomId', 'roomCode', 'startTime', 'endTime', 'date', 'scheduledAt', 'durationMinutes', 'hostId', 'hostName', 'hostAvatar', 'channelId', 'channelName', 'participants', 'attendeesCount', 'isEncrypted', 'createdAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+        data.hostId is string && data.hostId.size() <= 128 &&
+        data.hostName is string && data.hostName.size() <= 100 &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 2000)) &&
+        (!('roomId' in data) || (data.roomId is string && data.roomId.size() <= 100)) &&
+        (!('roomCode' in data) || (data.roomCode is string && data.roomCode.size() <= 50)) &&
+        (!('startTime' in data) || (data.startTime is string && data.startTime.size() <= 50)) &&
+        (!('endTime' in data) || (data.endTime is string && data.endTime.size() <= 50)) &&
+        (!('date' in data) || (data.date is string && data.date.size() <= 50)) &&
+        (!('scheduledAt' in data) || (data.scheduledAt is string && data.scheduledAt.size() <= 50)) &&
+        (!('durationMinutes' in data) || data.durationMinutes is number) &&
+        (!('hostAvatar' in data) || (data.hostAvatar is string && data.hostAvatar.size() <= 10)) &&
+        (!('channelId' in data) || (data.channelId is string && data.channelId.size() <= 128)) &&
+        (!('channelName' in data) || (data.channelName is string && data.channelName.size() <= 100)) &&
+        (!('participants' in data) || data.participants is list) &&
+        (!('attendeesCount' in data) || data.attendeesCount is number) &&
+        (!('isEncrypted' in data) || data.isEncrypted is bool) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+    match /{path=**}/meetings/{meetingId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(meetingId) && isValidMeeting(incoming());
+      allow update: if isSignedIn() && isValidId(meetingId) && isValidMeeting(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // --- Audit Logs Collection ---
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'action', 'detail', 'category', 'status']) &&
+        data.keys().hasOnly(['id', 'timestamp', 'action', 'detail', 'category', 'status', 'actorId']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.timestamp is string && data.timestamp.size() <= 50 &&
+        data.action is string && data.action.size() <= 100 &&
+        data.detail is string && data.detail.size() <= 1000 &&
+        data.category in ['crypto', 'p2p', 'webrtc', 'auth', 'file', 'rbac', 'task', 'meeting', 'system'] &&
+        data.status in ['verified', 'info', 'warning', 'danger', 'success'];
+    }
+
+    match /{path=**}/auditLogs/{logId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if false; // Audit logs are strictly immutable append-only
+    }
+
+    // --- Channels Collection ---
+    function isValidChannel(data) {
+      return data.keys().hasAll(['id', 'name', 'category', 'isPrivate']) &&
+        data.keys().hasOnly(['id', 'name', 'description', 'category', 'isPrivate', 'createdBy', 'createdAt', 'unreadCount', 'dmPeer']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.category in ['general', 'dev', 'project', 'announcement', 'direct'] &&
+        data.isPrivate is bool &&
+        (!('description' in data) || (data.description is string && data.description.size() <= 500)) &&
+        (!('createdBy' in data) || (data.createdBy is string && data.createdBy.size() <= 128)) &&
+        (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 50));
+    }
+
+    match /{path=**}/channels/{channelId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(channelId) && isValidChannel(incoming());
+      allow update: if isSignedIn() && isValidId(channelId) && isValidChannel(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    // --- P2P Signals & Room Presence (WebRTC Mesh Signaling) ---
+    match /p2p_signals/{signalId} {
+      allow get, list, create, update, delete: if true;
+    }
+
+    match /p2p_rooms/{roomId}/peers/{peerId} {
+      allow get, list, create, update, delete: if true;
+    }
+
+    // --- Tenants Collection ---
+    function isValidTenant(data) {
+      return data.keys().hasAll(['id', 'name', 'adminEmail', 'createdAt', 'createdBy']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 100 &&
+        data.adminEmail is string && data.adminEmail.size() > 0 && data.adminEmail.size() <= 120 &&
+        data.createdAt is string && data.createdAt.size() <= 50 &&
+        data.createdBy is string && data.createdBy.size() <= 128 &&
+        (!('allowedEmails' in data) || data.allowedEmails is list);
+    }
+
+    match /tenants/{tenantId} {
+      allow get, list: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(tenantId) && isValidTenant(incoming());
+      allow update: if isSignedIn() && isValidId(tenantId) && isValidTenant(incoming());
+      allow delete: if isSignedIn();
+
+      match /channels/{channelId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(channelId) && isValidChannel(incoming());
+        allow update: if isSignedIn() && isValidId(channelId) && isValidChannel(incoming());
+        allow delete: if isSignedIn();
+
+        match /messages/{messageId} {
+          allow get, list: if isSignedIn();
+          allow create: if isSignedIn() && isValidId(messageId) && isValidMessage(incoming());
+          allow update: if false;
+          allow delete: if isSignedIn();
+        }
+
+        match /tasks/{taskId} {
+          allow get, list: if isSignedIn();
+          allow create: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+          allow update: if isSignedIn() && isValidId(taskId) && isValidTask(incoming());
+          allow delete: if isSignedIn();
+        }
+
+        match /files/{fileId} {
+          allow get, list: if isSignedIn();
+          allow create: if isSignedIn() && isValidId(fileId) && isValidSecureFile(incoming());
+          allow update: if isSignedIn() && isValidId(fileId) && isValidSecureFile(incoming());
+          allow delete: if isSignedIn();
+        }
+      }
+
+      match /meetings/{meetingId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(meetingId) && isValidMeeting(incoming());
+        allow update: if isSignedIn() && isValidId(meetingId) && isValidMeeting(incoming());
+        allow delete: if isSignedIn();
+      }
+
+      match /auditLogs/{logId} {
+        allow get, list: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming());
+        allow update, delete: if false;
+      }
+    }
+  }
+}
