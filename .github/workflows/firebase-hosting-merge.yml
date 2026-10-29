@@ -4,6 +4,7 @@ name: Deploy to Firebase Hosting on merge
     branches:
       - main
       - master
+  workflow_dispatch:
 
 jobs:
   build_and_deploy:
