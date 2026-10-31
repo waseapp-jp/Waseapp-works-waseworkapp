@@ -423,7 +423,7 @@ export default function App() {
 
   // Firebase Firestore Realtime Sync when Authenticated
   useEffect(() => {
-    if (!firebaseUser) return;
+    if (!firebaseUser && !isCompanyAuthenticated) return;
 
     // 1. Sync Tasks
     const pathTasks = 'tasks';
@@ -434,12 +434,10 @@ export default function App() {
         const seenIds = new Set<string>();
         for (const d of snapshot.docs) {
           const raw = d.data();
-          if (!raw.id.startsWith('task-') && !seenIds.has(raw.id)) {
+          if (!seenIds.has(raw.id)) {
             seenIds.add(raw.id);
             const dec = await decryptSingleTask(raw);
             firestoreTasks.push(dec);
-          } else if (raw.id.startsWith('task-')) {
-            deleteTaskFromFirestore(raw.id);
           }
         }
         if (firestoreTasks.length > 0) {
@@ -460,12 +458,10 @@ export default function App() {
         const seenIds = new Set<string>();
         for (const d of snapshot.docs) {
           const raw = d.data();
-          if (!raw.id.startsWith('meet-') && !seenIds.has(raw.id)) {
+          if (!seenIds.has(raw.id)) {
             seenIds.add(raw.id);
             const dec = await decryptSingleMeeting(raw);
             firestoreMeetings.push(dec);
-          } else if (raw.id.startsWith('meet-')) {
-            deleteMeetingFromFirestore(raw.id);
           }
         }
         if (firestoreMeetings.length > 0) {
@@ -486,11 +482,9 @@ export default function App() {
         const seenIds = new Set<string>();
         snapshot.forEach((d) => {
           const f = d.data() as SecureFile;
-          if (!f.id.startsWith('file-') && !seenIds.has(f.id)) {
+          if (!seenIds.has(f.id)) {
             seenIds.add(f.id);
             firestoreFiles.push(f);
-          } else if (f.id.startsWith('file-')) {
-            deleteFileFromFirestore(f.id);
           }
         });
         if (firestoreFiles.length > 0) {
@@ -511,7 +505,7 @@ export default function App() {
         const seenIds = new Set<string>();
         for (const d of snapshot.docs) {
           const m = d.data() as Message;
-          if (!m.id.startsWith('seed-msg-') && !seenIds.has(m.id)) {
+          if (!seenIds.has(m.id)) {
             seenIds.add(m.id);
             const decrypted = await decryptSingleMessage(m);
             firestoreMessages.push(decrypted);
@@ -582,7 +576,7 @@ export default function App() {
       unsubTenants();
       unsubChannels();
     };
-  }, [firebaseUser]);
+  }, [firebaseUser, isCompanyAuthenticated]);
 
   // Tenant Operations
   const handleCreateTenant = async (name: string, adminEmail: string) => {
@@ -594,9 +588,7 @@ export default function App() {
       createdBy: currentUser.email || 'aimutsu0120@gmail.com',
     };
     setTenants((prev) => [...prev, newTenant]);
-    if (firebaseUser) {
-      await saveTenantToFirestore(newTenant);
-    }
+    await saveTenantToFirestore(newTenant);
     handleAddAuditLog({
       action: 'TENANT_CREATED',
       detail: `新規テナント作成: ${name} (管理者: ${adminEmail})`,
@@ -607,9 +599,7 @@ export default function App() {
 
   const handleDeleteTenant = async (tenantId: string) => {
     setTenants((prev) => prev.filter((t) => t.id !== tenantId));
-    if (firebaseUser) {
-      await deleteTenantFromFirestore(tenantId);
-    }
+    await deleteTenantFromFirestore(tenantId);
     if (currentTenant?.id === tenantId) {
       setCurrentTenant(tenants.find((t) => t.id !== tenantId) || null);
     }
@@ -812,9 +802,7 @@ export default function App() {
     });
 
     // 3. Persist to Firestore
-    if (firebaseUser) {
-      saveMessageToFirestore(newMsg);
-    }
+    saveMessageToFirestore(newMsg, currentTenant?.id || 'waseapp-primary');
   };
 
   // Create Task
@@ -1116,9 +1104,7 @@ export default function App() {
     setActiveChannelId(newChan.id);
     setActiveTab('chat');
 
-    if (firebaseUser) {
-      saveChannelToFirestore(newChan);
-    }
+    saveChannelToFirestore(newChan, currentTenant?.id || 'waseapp-primary');
   };
 
   // Start Direct Message session with a colleague

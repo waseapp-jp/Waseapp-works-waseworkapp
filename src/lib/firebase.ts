@@ -170,10 +170,15 @@ export async function signInWithGoogle(): Promise<FirebaseUser> {
 export async function ensureAuth(): Promise<FirebaseUser | null> {
   if (auth.currentUser) return auth.currentUser;
   try {
+    if (typeof (auth as any).authStateReady === 'function') {
+      await (auth as any).authStateReady();
+    }
+  } catch (e) {}
+  if (auth.currentUser) return auth.currentUser;
+  try {
     const res = await signInAnonymously(auth);
     return res.user;
   } catch (err) {
-    console.warn('[Firebase] Anonymous auto-authentication notice:', err);
     return auth.currentUser;
   }
 }
@@ -459,9 +464,8 @@ export async function registerCustomIdPassword(
  */
 export async function saveUserProfileToFirestore(user: Partial<User> & { id: string }, email?: string | null) {
   try {
-    const currentAuth = await ensureAuth();
-    if (!currentAuth) return;
-    const targetId = user.id || currentAuth.uid;
+    const currentAuth = await ensureAuth().catch(() => null);
+    const targetId = user.id || currentAuth?.uid || auth.currentUser?.uid || 'user';
 
     const payload: any = {
       id: targetId,
@@ -487,8 +491,8 @@ export async function saveUserProfileToFirestore(user: Partial<User> & { id: str
  * Save Task to Firestore (Tenant -> Channel Hierarchy + AES-256-GCM Zero-Knowledge Encryption)
  */
 export async function saveTaskToFirestore(task: Task, tenantId = 'waseapp-primary', channelId?: string) {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  const currentAuth = await ensureAuth().catch(() => null);
+  const currentUid = currentAuth?.uid || auth.currentUser?.uid || task.createdBy || 'user';
   const targetChannel = channelId || task.channelId || 'general';
 
   // Zero-Knowledge AES-256-GCM Encryption
@@ -516,7 +520,7 @@ export async function saveTaskToFirestore(task: Task, tenantId = 'waseapp-primar
     description: encryptedDesc,
     titleIv,
     descIv,
-    createdBy: task.createdBy || currentAuth.uid,
+    createdBy: task.createdBy || currentUid,
     updatedAt: new Date().toISOString(),
   };
 
@@ -524,10 +528,10 @@ export async function saveTaskToFirestore(task: Task, tenantId = 'waseapp-primar
   const topPath = `tasks/${task.id}`;
 
   try {
-    await setDoc(doc(db, subPath), payload);
     await setDoc(doc(db, topPath), payload);
+    await setDoc(doc(db, subPath), payload).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -535,11 +539,10 @@ export async function saveTaskToFirestore(task: Task, tenantId = 'waseapp-primar
  * Delete Task from Firestore
  */
 export async function deleteTaskFromFirestore(taskId: string, tenantId = 'waseapp-primary', channelId = 'general') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   try {
-    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}/tasks/${taskId}`));
     await deleteDoc(doc(db, `tasks/${taskId}`));
+    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}/tasks/${taskId}`)).catch(() => {});
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `tasks/${taskId}`);
   }
@@ -549,8 +552,8 @@ export async function deleteTaskFromFirestore(taskId: string, tenantId = 'waseap
  * Save Meeting to Firestore (Tenant Hierarchy + AES-256 Encryption)
  */
 export async function saveMeetingToFirestore(meeting: ScheduledMeeting, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  const currentAuth = await ensureAuth().catch(() => null);
+  const currentUid = currentAuth?.uid || auth.currentUser?.uid || meeting.hostId || 'user';
 
   let encryptedTitle = meeting.title;
   let encryptedDesc = meeting.description || '';
@@ -576,17 +579,18 @@ export async function saveMeetingToFirestore(meeting: ScheduledMeeting, tenantId
     description: encryptedDesc,
     titleIv,
     descIv,
-    hostId: meeting.hostId || currentAuth.uid,
+    hostId: meeting.hostId || currentUid,
+    updatedAt: new Date().toISOString(),
   };
 
   const subPath = `tenants/${tenantId}/meetings/${meeting.id}`;
   const topPath = `meetings/${meeting.id}`;
 
   try {
-    await setDoc(doc(db, subPath), payload);
     await setDoc(doc(db, topPath), payload);
+    await setDoc(doc(db, subPath), payload).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -594,11 +598,10 @@ export async function saveMeetingToFirestore(meeting: ScheduledMeeting, tenantId
  * Delete Meeting from Firestore
  */
 export async function deleteMeetingFromFirestore(meetingId: string, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   try {
-    await deleteDoc(doc(db, `tenants/${tenantId}/meetings/${meetingId}`));
     await deleteDoc(doc(db, `meetings/${meetingId}`));
+    await deleteDoc(doc(db, `tenants/${tenantId}/meetings/${meetingId}`)).catch(() => {});
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `meetings/${meetingId}`);
   }
@@ -608,18 +611,17 @@ export async function deleteMeetingFromFirestore(meetingId: string, tenantId = '
  * Save SecureFile record to Firestore (Tenant -> Channel Hierarchy)
  */
 export async function saveFileToFirestore(file: SecureFile, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   const targetChannel = file.channelId || 'general';
 
   const subPath = `tenants/${tenantId}/channels/${targetChannel}/files/${file.id}`;
   const topPath = `files/${file.id}`;
 
   try {
-    await setDoc(doc(db, subPath), file);
     await setDoc(doc(db, topPath), file);
+    await setDoc(doc(db, subPath), file).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -627,11 +629,10 @@ export async function saveFileToFirestore(file: SecureFile, tenantId = 'waseapp-
  * Delete SecureFile record from Firestore
  */
 export async function deleteFileFromFirestore(fileId: string, tenantId = 'waseapp-primary', channelId = 'general') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   try {
-    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}/files/${fileId}`));
     await deleteDoc(doc(db, `files/${fileId}`));
+    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}/files/${fileId}`)).catch(() => {});
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `files/${fileId}`);
   }
@@ -641,17 +642,16 @@ export async function deleteFileFromFirestore(fileId: string, tenantId = 'waseap
  * Save AuditLog to Firestore (Tenant Hierarchy)
  */
 export async function saveAuditLogToFirestore(log: AuditLog, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
 
   const subPath = `tenants/${tenantId}/auditLogs/${log.id}`;
   const topPath = `auditLogs/${log.id}`;
 
   try {
-    await setDoc(doc(db, subPath), log);
     await setDoc(doc(db, topPath), log);
+    await setDoc(doc(db, subPath), log).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -659,8 +659,8 @@ export async function saveAuditLogToFirestore(log: AuditLog, tenantId = 'waseapp
  * Save encrypted message to Firestore (Tenant -> Channel Hierarchy)
  */
 export async function saveMessageToFirestore(message: Message, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  const currentAuth = await ensureAuth().catch(() => null);
+  const currentUid = currentAuth?.uid || auth.currentUser?.uid || message.senderId || 'user';
   const targetChannel = message.channelId || 'general';
 
   const payload = {
@@ -668,8 +668,8 @@ export async function saveMessageToFirestore(message: Message, tenantId = 'wasea
     channelId: targetChannel,
     encryptedContent: message.encryptedContent,
     iv: message.iv,
-    senderId: currentAuth.uid || message.senderId,
-    senderName: message.senderName || currentAuth.displayName || 'ユーザー',
+    senderId: currentUid,
+    senderName: message.senderName || currentAuth?.displayName || 'ユーザー',
     senderAvatar: message.senderAvatar || 'US',
     timestamp: message.timestamp || new Date().toISOString(),
     isEncrypted: message.isEncrypted ?? true,
@@ -681,10 +681,10 @@ export async function saveMessageToFirestore(message: Message, tenantId = 'wasea
   const topPath = `messages/${message.id}`;
 
   try {
-    await setDoc(doc(db, subPath), payload);
     await setDoc(doc(db, topPath), payload);
+    await setDoc(doc(db, subPath), payload).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -692,8 +692,7 @@ export async function saveMessageToFirestore(message: Message, tenantId = 'wasea
  * Save Tenant to Firestore
  */
 export async function saveTenantToFirestore(tenant: Tenant) {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   const path = `tenants/${tenant.id}`;
   try {
     const tenantPayload: any = {
@@ -716,8 +715,7 @@ export async function saveTenantToFirestore(tenant: Tenant) {
  * Delete Tenant from Firestore
  */
 export async function deleteTenantFromFirestore(tenantId: string) {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   const path = `tenants/${tenantId}`;
   try {
     await deleteDoc(doc(db, 'tenants', tenantId));
@@ -736,17 +734,16 @@ export async function saveChannelToFirestore(channel: {
   category?: string;
   isPrivate?: boolean;
 }, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
 
   const subPath = `tenants/${tenantId}/channels/${channel.id}`;
   const topPath = `channels/${channel.id}`;
 
   try {
-    await setDoc(doc(db, subPath), channel, { merge: true });
     await setDoc(doc(db, topPath), channel, { merge: true });
+    await setDoc(doc(db, subPath), channel, { merge: true }).catch(() => {});
   } catch (err) {
-    handleFirestoreError(err, OperationType.WRITE, subPath);
+    handleFirestoreError(err, OperationType.WRITE, topPath);
   }
 }
 
@@ -754,11 +751,10 @@ export async function saveChannelToFirestore(channel: {
  * Delete Channel from Firestore
  */
 export async function deleteChannelFromFirestore(channelId: string, tenantId = 'waseapp-primary') {
-  const currentAuth = await ensureAuth();
-  if (!currentAuth) return;
+  await ensureAuth().catch(() => null);
   try {
-    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}`));
     await deleteDoc(doc(db, `channels/${channelId}`));
+    await deleteDoc(doc(db, `tenants/${tenantId}/channels/${channelId}`)).catch(() => {});
   } catch (err) {
     handleFirestoreError(err, OperationType.DELETE, `channels/${channelId}`);
   }
